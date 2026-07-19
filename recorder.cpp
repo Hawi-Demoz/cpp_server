@@ -221,151 +221,313 @@ std::string buildDashboardHtml() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Network Black-Box Recorder</title>
+  <title>netrec // black-box</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a2332;
-      --text: #e7ecf3;
-      --muted: #8b9bb4;
-      --ok: #3ecf8e;
-      --fail: #f07178;
-      --line: #5b9fd4;
-      --grid: #2a3548;
+      --bg: #121212;
+      --bg2: #0d0d0d;
+      --panel: #161616;
+      --text: #e0e0e0;
+      --muted: #7a7a7a;
+      --dim: #4a4a4a;
+      --grid: #2a2a2a;
+      --border: #333;
+      --accent: #5a9e6f;   /* one muted green — numbers + latency trace */
+      --down: #9a5a5a;     /* semantic DOWN only, not a second brand color */
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
-      margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.35;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      position: relative;
     }
-    header {
-      padding: 1.25rem 1.5rem 0.5rem;
-      border-bottom: 1px solid var(--grid);
+    /* subtle CRT scanlines — low opacity so data stays readable */
+    body::after {
+      content: "";
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 2px,
+        rgba(0, 0, 0, 0.12) 2px,
+        rgba(0, 0, 0, 0.12) 3px
+      );
     }
-    header h1 {
-      margin: 0 0 0.35rem;
-      font-size: 1.35rem;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 10px 12px 16px;
+      position: relative;
+      z-index: 1;
     }
-    header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
-    .meta {
+    .titlebar {
       display: flex;
-      flex-wrap: wrap;
-      gap: 1rem 1.75rem;
-      padding: 1rem 1.5rem;
-      font-size: 0.95rem;
+      align-items: baseline;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px;
+      margin-bottom: 8px;
     }
-    .meta span b { color: var(--ok); }
-    .meta .fail b { color: var(--fail); }
-    main { padding: 0 1.5rem 2rem; }
-    .chart-wrap {
+    .titlebar h1 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .titlebar .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .cursor {
+      display: inline-block;
+      width: 0.6ch;
+      background: var(--accent);
+      color: transparent;
+      animation: blink 1.1s step-end infinite;
+      margin-left: 2px;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      border: 1px solid var(--border);
       background: var(--panel);
-      border: 1px solid var(--grid);
-      border-radius: 8px;
-      padding: 0.75rem;
-      margin-bottom: 1.25rem;
+      margin-bottom: 8px;
     }
-    canvas { width: 100%; height: 220px; display: block; }
+    .stat {
+      padding: 6px 10px;
+      border-right: 1px solid var(--border);
+    }
+    .stat:last-child { border-right: none; }
+    .stat .k {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    .stat .v {
+      color: var(--accent);
+      font-weight: 500;
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .stat.down .v { color: var(--down); }
+    .stat .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 1px;
+      background: var(--accent);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .stat.down .dot { background: var(--down); }
+    #err {
+      color: var(--down);
+      min-height: 1.2em;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      border-radius: 2px;
+      margin-bottom: 8px;
+    }
+    .panel-h {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .chart-wrap { padding: 4px 4px 2px; }
+    canvas {
+      width: 100%;
+      height: 200px;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .log-wrap { max-height: 340px; overflow: auto; }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
-      background: var(--panel);
-      border: 1px solid var(--grid);
-      border-radius: 8px;
-      overflow: hidden;
+      font-size: 12px;
     }
-    th, td { padding: 0.45rem 0.75rem; text-align: left; }
+    th, td {
+      padding: 3px 8px;
+      text-align: left;
+      border-bottom: 1px solid #1e1e1e;
+      white-space: nowrap;
+    }
     th {
-      background: #243044;
       color: var(--muted);
-      font-weight: 600;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      font-weight: 500;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
     }
-    tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
-    .ok { color: var(--ok); }
-    .bad { color: var(--fail); }
-    #err { color: var(--fail); padding: 0 1.5rem; min-height: 1.2em; }
+    td.num { color: var(--accent); }
+    .tag-ok { color: var(--accent); }
+    .tag-down { color: var(--down); }
+    .foot {
+      color: var(--dim);
+      font-size: 11px;
+      margin-top: 6px;
+    }
+    @media (max-width: 640px) {
+      .stats { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(2) { border-right: none; }
+      .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--border); }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Network Black-Box Recorder</h1>
-    <p>ICMP latency log — refreshes from <code>/data</code> every 2 seconds</p>
-  </header>
-  <div class="meta">
-    <span>Target: <b id="target">—</b></span>
-    <span>Samples: <b id="count">0</b></span>
-    <span id="lastWrap">Last: <b id="last">—</b></span>
-    <span>Updated: <b id="updated">—</b></span>
-  </div>
-  <p id="err"></p>
-  <main>
-    <div class="chart-wrap">
-      <canvas id="chart" width="900" height="220"></canvas>
+  <div class="wrap">
+    <div class="titlebar">
+      <h1>netrec</h1>
+      <span class="sub">icmp black-box // poll /data @ 2s</span>
+      <span class="cursor">_</span>
     </div>
-    <table>
-      <thead>
-        <tr><th>Time</th><th>Result</th><th>Latency</th></tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </main>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="k">TARGET</div>
+        <div class="v" id="target">--</div>
+      </div>
+      <div class="stat">
+        <div class="k">SAMPLES</div>
+        <div class="v" id="count">0</div>
+      </div>
+      <div class="stat" id="statusStat">
+        <div class="k">STATUS</div>
+        <div class="v"><span class="dot" id="statusDot"></span><span id="statusTag">[--]</span></div>
+      </div>
+      <div class="stat">
+        <div class="k">LAST RTT</div>
+        <div class="v" id="last">--</div>
+      </div>
+    </div>
+
+    <div id="err"></div>
+
+    <div class="panel">
+      <div class="panel-h">latency_ms  [trace]  — green = rtt, tick = down</div>
+      <div class="chart-wrap">
+        <canvas id="chart" width="920" height="200"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h">history  (newest first, last 50)</div>
+      <div class="log-wrap">
+        <table>
+          <thead>
+            <tr><th>TIME</th><th>STATE</th><th>RTT</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="foot">updated <span id="updated">--</span> // leave recorder.exe running</div>
+  </div>
+
   <script>
+    const ACCENT = "#5a9e6f";
+    const DOWN = "#9a5a5a";
+    const GRID = "#2a2a2a";
+    const MUTED = "#7a7a7a";
+    const BG = "#0d0d0d";
+
     const chart = document.getElementById("chart");
     const ctx = chart.getContext("2d");
 
     function drawChart(samples) {
       const w = chart.width;
       const h = chart.height;
-      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, w, h);
 
-      const pad = { l: 40, r: 12, t: 12, b: 28 };
+      const pad = { l: 44, r: 8, t: 10, b: 22 };
       const plotW = w - pad.l - pad.r;
       const plotH = h - pad.t - pad.b;
-
-      ctx.strokeStyle = "#2a3548";
-      ctx.beginPath();
-      ctx.moveTo(pad.l, pad.t);
-      ctx.lineTo(pad.l, pad.t + plotH);
-      ctx.lineTo(pad.l + plotW, pad.t + plotH);
-      ctx.stroke();
-
-      if (!samples.length) {
-        ctx.fillStyle = "#8b9bb4";
-        ctx.fillText("Waiting for samples...", pad.l + 8, pad.t + 20);
-        return;
-      }
 
       const vals = samples.map(s => s.ok ? s.ms : null);
       const finite = vals.filter(v => v !== null);
       const maxMs = Math.max(50, ...(finite.length ? finite : [50]));
 
-      ctx.fillStyle = "#8b9bb4";
-      ctx.font = "12px Segoe UI, sans-serif";
-      ctx.fillText(maxMs + " ms", 4, pad.t + 10);
-      ctx.fillText("0", 18, pad.t + plotH);
-
-      // Failures as vertical red marks
-      for (let i = 0; i < samples.length; i++) {
-        if (samples[i].ok) continue;
-        const x = pad.l + (samples.length === 1 ? plotW / 2 : (i / (samples.length - 1)) * plotW);
-        ctx.strokeStyle = "#f07178";
+      // horizontal grid (oscilloscope style)
+      ctx.strokeStyle = GRID;
+      ctx.lineWidth = 1;
+      const divisions = 4;
+      for (let g = 0; g <= divisions; g++) {
+        const y = pad.t + (plotH * g) / divisions;
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(pad.l + plotW, y);
+        ctx.stroke();
+      }
+      // vertical grid
+      const vDiv = 8;
+      for (let g = 0; g <= vDiv; g++) {
+        const x = pad.l + (plotW * g) / vDiv;
         ctx.beginPath();
         ctx.moveTo(x, pad.t);
         ctx.lineTo(x, pad.t + plotH);
         ctx.stroke();
       }
 
-      // Latency line
-      ctx.strokeStyle = "#5b9fd4";
-      ctx.lineWidth = 2;
+      // axes
+      ctx.strokeStyle = "#3a3a3a";
+      ctx.beginPath();
+      ctx.moveTo(pad.l, pad.t);
+      ctx.lineTo(pad.l, pad.t + plotH);
+      ctx.lineTo(pad.l + plotW, pad.t + plotH);
+      ctx.stroke();
+
+      ctx.fillStyle = MUTED;
+      ctx.font = "11px JetBrains Mono, Consolas, monospace";
+      ctx.fillText(maxMs + "ms", 2, pad.t + 9);
+      ctx.fillText("0", 28, pad.t + plotH);
+
+      if (!samples.length) {
+        ctx.fillText("awaiting samples...", pad.l + 8, pad.t + 24);
+        return;
+      }
+
+      // DOWN markers: short ticks at baseline (not full colorful bars)
+      for (let i = 0; i < samples.length; i++) {
+        if (samples[i].ok) continue;
+        const x = pad.l + (samples.length === 1 ? plotW / 2 : (i / (samples.length - 1)) * plotW);
+        ctx.strokeStyle = DOWN;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, pad.t + plotH);
+        ctx.lineTo(x, pad.t + plotH - 10);
+        ctx.stroke();
+      }
+
+      // latency trace — thin, no fill
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1.25;
       ctx.beginPath();
       let started = false;
       for (let i = 0; i < samples.length; i++) {
@@ -376,37 +538,41 @@ std::string buildDashboardHtml() {
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      ctx.lineWidth = 1;
     }
 
     function render(data) {
       document.getElementById("target").textContent = data.target;
-      document.getElementById("count").textContent = data.samples.length;
+      document.getElementById("count").textContent = String(data.samples.length);
       document.getElementById("updated").textContent = new Date().toLocaleTimeString();
 
       const last = data.samples[data.samples.length - 1];
+      const statusStat = document.getElementById("statusStat");
+      const statusTag = document.getElementById("statusTag");
       const lastEl = document.getElementById("last");
-      const wrap = document.getElementById("lastWrap");
+
       if (!last) {
-        lastEl.textContent = "—";
-        wrap.classList.remove("fail");
+        statusStat.classList.remove("down");
+        statusTag.textContent = "[--]";
+        lastEl.textContent = "--";
       } else if (last.ok) {
+        statusStat.classList.remove("down");
+        statusTag.textContent = "[OK]";
         lastEl.textContent = last.ms + " ms @ " + last.t;
-        wrap.classList.remove("fail");
       } else {
-        lastEl.textContent = "FAIL @ " + last.t;
-        wrap.classList.add("fail");
+        statusStat.classList.add("down");
+        statusTag.textContent = "[DOWN]";
+        lastEl.textContent = "timeout @ " + last.t;
       }
 
       drawChart(data.samples);
 
       const tbody = document.getElementById("rows");
-      const recent = data.samples.slice(-40).reverse();
+      const recent = data.samples.slice(-50).reverse();
       tbody.innerHTML = recent.map(s => {
         if (s.ok) {
-          return "<tr><td>" + s.t + "</td><td class='ok'>OK</td><td>" + s.ms + " ms</td></tr>";
+          return "<tr><td>" + s.t + "</td><td class='tag-ok'>[OK]</td><td class='num'>" + s.ms + " ms</td></tr>";
         }
-        return "<tr><td>" + s.t + "</td><td class='bad'>FAIL</td><td>—</td></tr>";
+        return "<tr><td>" + s.t + "</td><td class='tag-down'>[DOWN]</td><td class='tag-down'>--</td></tr>";
       }).join("");
     }
 
@@ -419,7 +585,7 @@ std::string buildDashboardHtml() {
         render(data);
       } catch (e) {
         document.getElementById("err").textContent =
-          "Could not load /data — is recorder.exe still running? (" + e.message + ")";
+          "ERR fetch /data failed — is recorder.exe running? (" + e.message + ")";
       }
     }
 
