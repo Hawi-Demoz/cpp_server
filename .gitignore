@@ -1,0 +1,20 @@
+# Build output
+*.exe
+*.o
+*.obj
+
+# Local run logs / temp
+*.out
+*.err
+rec_out.txt
+rec_err.txt
+gpp-*.txt
+build.out
+build.err
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
